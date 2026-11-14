@@ -74,3 +74,14 @@ class CandidateProfile(Base):
     resume_text: Mapped[str | None] = mapped_column(Text)
     profile_json: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class GeneratedAnswer(Base):
+    __tablename__ = "generated_answers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(100), default="unknown")
+    needs_review: Mapped[bool] = mapped_column(default=True)
+    evidence: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -7,6 +7,8 @@ from .db import SessionLocal, init_db
 from .models import Job, Application, ApplicationStatus, ApplicationEvent
 from .schemas import JobCreate, JobResponse, ApplicationResponse
 from .services.worker import ApplicationWorker
+from .candidate.routes import router as candidate_router
+from .answers.routes import router as answers_router
 
 worker = ApplicationWorker()
 
@@ -29,7 +31,9 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
-app = FastAPI(title="Pi Job Application Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ApplyPilot", version="0.2.0", lifespan=lifespan)
+app.include_router(candidate_router)
+app.include_router(answers_router)
 
 @app.get("/health")
 def health():
