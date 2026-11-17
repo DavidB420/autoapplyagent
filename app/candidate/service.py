@@ -28,5 +28,6 @@ def profile_to_dict(profile: CandidateProfile) -> dict:
         "location": profile.location,
         "resume_text": profile.resume_text,
         "structured_profile": structured,
+        "resume_extraction": structured.get("resume_extraction") if isinstance(structured, dict) else None,
         "updated_at": profile.updated_at,
     }

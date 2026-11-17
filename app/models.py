@@ -85,3 +85,16 @@ class GeneratedAnswer(Base):
     needs_review: Mapped[bool] = mapped_column(default=True)
     evidence: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CandidateDocument(Base):
+    __tablename__ = "candidate_documents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    original_filename: Mapped[str] = mapped_column(String(500))
+    stored_filename: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    document_type: Mapped[str] = mapped_column(String(50), default="other")
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
