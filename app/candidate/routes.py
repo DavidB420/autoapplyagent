@@ -75,6 +75,14 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(db_s
     profile.resume_text = text
     extraction_status = "not_configured"
     extraction_error = None
+    # A new resume invalidates the previous extraction; drop it so stale data is never kept.
+    try:
+        previous = json.loads(profile.profile_json or "{}")
+    except json.JSONDecodeError:
+        previous = {}
+    if isinstance(previous, dict) and "resume_extraction" in previous:
+        previous.pop("resume_extraction")
+        profile.profile_json = json.dumps(previous, ensure_ascii=False)
     try:
         extracted = await llm_client.extract_resume(text)
         try:
@@ -85,13 +93,24 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(db_s
             structured = {}
         structured["resume_extraction"] = extracted
         profile.profile_json = json.dumps(structured, ensure_ascii=False)
+        # Fill empty contact columns from the extraction; never overwrite manual entries.
+        contact = extracted.get("contact")
+        contact = contact if isinstance(contact, dict) else {}
+        for column, value in (
+            ("full_name", extracted.get("full_name")),
+            ("email", contact.get("email")),
+            ("phone", contact.get("phone")),
+            ("location", contact.get("location")),
+        ):
+            if isinstance(value, str) and value.strip() and not getattr(profile, column):
+                setattr(profile, column, value.strip())
         extraction_status = "completed"
     except RuntimeError as exc:
         extraction_error = str(exc)
     except Exception as exc:
         # Preserve the uploaded resume even if the LLM is unavailable or returns invalid JSON.
         extraction_status = "failed"
-        extraction_error = str(exc)
+        extraction_error = f"{type(exc).__name__}: {exc}"
 
     db.commit()
     db.refresh(profile)

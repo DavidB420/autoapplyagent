@@ -1,21 +1,27 @@
 import asyncio
+import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import SessionLocal
 from ..models import Application, ApplicationStatus
-from .evaluator import JobEvaluator
 from .state_machine import transition
 from ..ats.playwright_worker import BrowserWorker
+
+logger = logging.getLogger(__name__)
+
 
 class ApplicationWorker:
     def __init__(self):
         self.running = False
-        self.evaluator = JobEvaluator()
         self.browser = BrowserWorker()
 
     async def start(self):
-        await self.browser.start()
+        try:
+            await self.browser.start()
+        except Exception:
+            logger.exception("Browser failed to start (is Chromium installed?); worker not running")
+            return
         self.running = True
         while self.running:
             try:
@@ -25,6 +31,7 @@ class ApplicationWorker:
             except asyncio.CancelledError:
                 break
             except Exception:
+                logger.exception("Worker loop error")
                 await asyncio.sleep(settings.worker_poll_seconds)
         await self.browser.stop()
 
@@ -48,8 +55,6 @@ class ApplicationWorker:
                 return False
 
             if app.status == ApplicationStatus.DISCOVERED.value:
-                app.score = self.evaluator.score(app.job)
-                db.commit()
                 transition(db, app, ApplicationStatus.EVALUATED, f"score={app.score}")
 
             if app.status == ApplicationStatus.EVALUATED.value:
@@ -72,6 +77,7 @@ class ApplicationWorker:
 
             return True
         except Exception as exc:
+            logger.exception("Failed processing application")
             if app and app.status not in {
                 ApplicationStatus.SUBMITTED.value,
                 ApplicationStatus.FAILED.value,

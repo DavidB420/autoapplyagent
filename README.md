@@ -75,3 +75,18 @@ changes.
 - `GET /candidate/documents/{id}/download` — download the original uploaded file.
 
 Uploaded supporting documents are limited to 10 MB each. Docker Compose already mounts `./data` to `/app/data`, so the originals persist across container rebuilds and restarts. Keep `data/` private because it contains personal application documents. Scanned PDF OCR, advanced layout/table reconstruction, and human review/editing of extracted structured fields are not included yet.
+
+## Using Ollama (local LLM)
+
+1. Install Ollama and pull a model: `ollama pull qwen2.5:3b`.
+2. Set `LLM_BASE_URL`, `LLM_MODEL` in `.env` (see `.env.example`). `LLM_BASE_URL` must be the full
+   chat-completions endpoint, e.g. `http://127.0.0.1:11434/v1/chat/completions`.
+3. If the app runs in Docker, `127.0.0.1` points at the container. Use
+   `http://host.docker.internal:11434/v1/chat/completions` (the compose file maps this name), and make Ollama
+   listen on all interfaces: `OLLAMA_HOST=0.0.0.0` (for a systemd service, `sudo systemctl edit ollama`
+   and add `Environment="OLLAMA_HOST=0.0.0.0"`). `0.0.0.0` exposes Ollama to your network; avoid on public Wi-Fi.
+4. After code changes, rebuild: `docker compose up -d --build`. After `.env`/compose changes:
+   `docker compose up -d --force-recreate`.
+
+Structured extraction on CPU can take several minutes; the extraction timeout is 600 seconds. On success,
+empty `full_name`, `email`, `phone` and `location` are filled from the extraction (manual values are never overwritten).

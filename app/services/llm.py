@@ -4,6 +4,25 @@ import httpx
 from ..config import settings
 
 
+def _parse_json_object(content: str) -> dict:
+    """Parse a JSON object, tolerating markdown fences or text around it."""
+    content = content.strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[-1]
+        if content.rstrip().endswith("```"):
+            content = content.rstrip()[:-3].strip()
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        start, end = content.find("{"), content.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        parsed = json.loads(content[start:end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("The LLM returned structured data in an invalid format")
+    return parsed
+
+
 @dataclass
 class AnswerResult:
     answer: str
@@ -37,6 +56,7 @@ class LLMClient:
         payload = {
             "model": settings.llm_model,
             "temperature": 0,
+            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": (
                     "Extract candidate information from the supplied resume into the requested JSON structure. "
@@ -50,20 +70,13 @@ class LLMClient:
                 {"role": "user", "content": f"Resume text:\n{resume_text}"},
             ],
         }
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=600) as client:
             response = await client.post(settings.llm_base_url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
 
-        content = data["choices"][0]["message"]["content"].strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[-1]
-            if content.rstrip().endswith("```"):
-                content = content.rstrip()[:-3].strip()
-        parsed = json.loads(content)
-        if not isinstance(parsed, dict):
-            raise ValueError("The LLM returned structured resume data in an invalid format")
-        return parsed
+        content = data["choices"][0]["message"]["content"]
+        return _parse_json_object(content)
 
     async def answer(self, question: str, candidate_context: str) -> AnswerResult:
         if not settings.llm_base_url or not settings.llm_model:
@@ -76,6 +89,7 @@ class LLMClient:
         payload = {
             "model": settings.llm_model,
             "temperature": 0.2,
+            "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
@@ -95,14 +109,17 @@ class LLMClient:
             ],
         }
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(settings.llm_base_url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-
-        content = data["choices"][0]["message"]["content"].strip()
         try:
-            parsed = json.loads(content)
+            async with httpx.AsyncClient(timeout=300) as client:
+                response = await client.post(settings.llm_base_url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+            content = data["choices"][0]["message"]["content"].strip()
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            return AnswerResult("", "error", True, f"LLM request failed: {type(exc).__name__}: {exc}")
+
+        try:
+            parsed = _parse_json_object(content)
             answer = str(parsed.get("answer", "")).strip()
             needs_review = bool(parsed.get("needs_review", True))
             evidence = str(parsed.get("evidence", "")).strip() or None
